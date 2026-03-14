@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import styled from '@emotion/styled'
@@ -104,8 +105,17 @@ const LoginBtn = styled.button`
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { isAuthenticated, loginWithRedirect } = useAuth0()
+  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0()
   const { userType, setUserType, isLoadingUserType } = usePortal()
+
+  // Auto-redirect authenticated users to their portal
+  useEffect(() => {
+    console.log('[HomePage] Auth state:', { isAuthenticated, isLoading, userType })
+    if (!isLoading && isAuthenticated && userType) {
+      console.log('[HomePage] Auto-redirecting to:', `/${userType}`)
+      navigate(`/${userType}`, { replace: true })
+    }
+  }, [isAuthenticated, isLoading, userType, navigate])
 
   const handleSelectTutor = () => {
     console.log('[HomePage] Selected: tutor')

@@ -23,14 +23,17 @@ export function CallbackPage() {
 
   // Step 1: Handle the Auth0 callback (runs once)
   useEffect(() => {
+    console.log('[Callback] useEffect triggered, hasHandledCallback:', hasHandledCallback.current)
     if (hasHandledCallback.current) return
     hasHandledCallback.current = true
 
     const processCallback = async () => {
       try {
         console.log('[Callback] Starting handleRedirectCallback...')
+        console.log('[Callback] Current URL:', window.location.href)
         const result = await handleRedirectCallback()
         console.log('[Callback] handleRedirectCallback result:', result)
+        console.log('[Callback] appState:', result?.appState)
         
         const destination =
           (result?.appState as { returnTo?: string } | undefined)?.returnTo ?? '/'
@@ -38,8 +41,12 @@ export function CallbackPage() {
         setReturnTo(destination)
       } catch (err) {
         console.error('[Callback] handleRedirectCallback error:', err)
-        // Already logged in - redirect to home
-        setReturnTo('/')
+        console.error('[Callback] Error details:', (err as Error).message)
+        // If already authenticated, get returnTo from localStorage as fallback
+        const storedUserType = localStorage.getItem('tutor_app_usertype')
+        const fallbackDestination = storedUserType ? `/${storedUserType}` : '/'
+        console.log('[Callback] Using fallback destination:', fallbackDestination)
+        setReturnTo(fallbackDestination)
       }
     }
     processCallback()
