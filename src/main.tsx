@@ -4,6 +4,7 @@ import { Global, css } from '@emotion/react'
 import { Auth0Provider } from '@auth0/auth0-react'
 import { BrowserRouter } from 'react-router-dom'
 import { lightTokens, darkTokens, fonts } from './theme'
+import { PortalProvider } from './context/PortalContext'
 import App from './App.tsx'
 
 const globalStyles = css`
@@ -139,7 +140,9 @@ createRoot(document.getElementById('root')!).render(
           ...(audience ? { audience } : {}),
         }}
       >
-        <App />
+        <PortalProvider>
+          <App />
+        </PortalProvider>
       </Auth0Provider>
     </BrowserRouter>
   </StrictMode>,
