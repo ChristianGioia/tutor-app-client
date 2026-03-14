@@ -25,11 +25,16 @@ export async function registerUser(params: {
   name?: string
   userType: UserType
 }): Promise<User> {
-  const response = await fetch(`${BASE_URL}/users/register`, {
+  const url = `${BASE_URL}/users/register`
+  console.log('POST', url, params)
+  
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
+
+  console.log('Response status:', response.status, response.statusText)
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
@@ -38,7 +43,9 @@ export async function registerUser(params: {
     )
   }
 
-  return response.json()
+  const result = await response.json()
+  console.log('registerUser success:', result)
+  return result
 }
 
 /**
@@ -46,9 +53,14 @@ export async function registerUser(params: {
  * Used to check if user exists and retrieve their stored user type
  */
 export async function getUser(auth0Id: string): Promise<User | null> {
-  const response = await fetch(`${BASE_URL}/users/${auth0Id}`)
+  const url = `${BASE_URL}/users/${auth0Id}`
+  console.log('GET', url)
+  
+  const response = await fetch(url)
+  console.log('Response status:', response.status, response.statusText)
 
   if (response.status === 404) {
+    console.log('User not found (404)')
     return null
   }
 
@@ -57,7 +69,9 @@ export async function getUser(auth0Id: string): Promise<User | null> {
     throw new Error(error.message || `Failed to fetch user: ${response.statusText}`)
   }
 
-  return response.json()
+  const result = await response.json()
+  console.log('getUser success:', result)
+  return result
 }
 
 /**

@@ -108,21 +108,26 @@ export function HomePage() {
   const { userType, setUserType, isLoadingUserType } = usePortal()
 
   const handleSelectTutor = () => {
+    console.log('[HomePage] Selected: tutor')
     setUserType('tutor')
   }
 
   const handleSelectClient = () => {
+    console.log('[HomePage] Selected: client')
     setUserType('client')
   }
 
   const handleLogin = async () => {
+    console.log('[HomePage] handleLogin called, userType:', userType, 'isAuthenticated:', isAuthenticated)
     if (!userType) return
 
     if (isAuthenticated) {
       // Already logged in, redirect to portal
+      console.log('[HomePage] Already authenticated, navigating to:', `/${userType}`)
       navigate(`/${userType}`)
     } else {
       // Trigger Auth0 login
+      console.log('[HomePage] Starting Auth0 login with returnTo:', `/${userType}`)
       await loginWithRedirect({
         appState: { returnTo: `/${userType}` },
       })

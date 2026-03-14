@@ -139,6 +139,7 @@ createRoot(document.getElementById('root')!).render(
           redirect_uri: callbackUrl,
           ...(audience ? { audience } : {}),
         }}
+        cacheLocation="localstorage"
       >
         <PortalProvider>
           <App />

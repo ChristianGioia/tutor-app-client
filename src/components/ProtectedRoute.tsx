@@ -20,6 +20,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth0()
   const location = useLocation()
 
+  console.log('[ProtectedRoute] path:', location.pathname, 'isLoading:', isLoading, 'isAuthenticated:', isAuthenticated)
+
   if (isLoading) {
     return (
       <LoadingWrapper>
@@ -29,8 +31,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
+    console.log('[ProtectedRoute] Not authenticated, redirecting to /login')
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  console.log('[ProtectedRoute] Authenticated, rendering children')
   return <>{children}</>
 }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { useNavigate } from 'react-router-dom'
 import styled from '@emotion/styled'
@@ -14,36 +14,77 @@ const Wrapper = styled.main`
 `
 
 export function CallbackPage() {
-  const { error, handleRedirectCallback, isLoading, user } = useAuth0()
+  const { error, handleRedirectCallback, isLoading, user, isAuthenticated } = useAuth0()
   const navigate = useNavigate()
   const { syncUserWithBackend } = usePortal()
+  const [returnTo, setReturnTo] = useState<string | null>(null)
+  const hasHandledCallback = useRef(false)
+  const hasSyncedUser = useRef(false)
 
+  // Step 1: Handle the Auth0 callback (runs once)
   useEffect(() => {
-    const finishLogin = async () => {
+    if (hasHandledCallback.current) return
+    hasHandledCallback.current = true
+
+    const processCallback = async () => {
       try {
+        console.log('[Callback] Starting handleRedirectCallback...')
         const result = await handleRedirectCallback()
-        const returnTo =
+        console.log('[Callback] handleRedirectCallback result:', result)
+        
+        const destination =
           (result?.appState as { returnTo?: string } | undefined)?.returnTo ?? '/'
-
-        // Wait for auth state to settle
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        // Sync user with backend if we have their info
-        if (user?.sub && user?.email) {
-          await syncUserWithBackend(user.sub, user.email, user.name)
-        }
-
-        navigate(returnTo, { replace: true })
+        console.log('[Callback] Will navigate to:', destination)
+        setReturnTo(destination)
       } catch (err) {
-        console.error('Callback error:', err)
-        // If handleRedirectCallback throws, wait for auth state to settle
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        navigate('/', { replace: true })
+        console.error('[Callback] handleRedirectCallback error:', err)
+        // Already logged in - redirect to home
+        setReturnTo('/')
       }
     }
-    finishLogin()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    processCallback()
+  }, [handleRedirectCallback])
+
+  // Step 2: Once we have user info AND returnTo is set, sync with backend and navigate
+  useEffect(() => {
+    if (hasSyncedUser.current) return
+    if (!returnTo) {
+      console.log('[Callback] Waiting for returnTo to be set...')
+      return
+    }
+    if (!isAuthenticated) {
+      console.log('[Callback] Waiting for isAuthenticated...', { isAuthenticated })
+      return
+    }
+    if (!user?.sub || !user?.email) {
+      console.log('[Callback] Waiting for user info...', { user })
+      return
+    }
+
+    hasSyncedUser.current = true
+
+    // Capture values for use in async function (we know they're defined from the check above)
+    const auth0Id = user.sub!
+    const email = user.email!
+    const name = user.name || undefined
+
+    const syncAndNavigate = async () => {
+      console.log('[Callback] User authenticated:', { sub: auth0Id, email })
+      
+      try {
+        console.log('[Callback] Syncing user with backend...')
+        await syncUserWithBackend(auth0Id, email, name)
+        console.log('[Callback] User synced successfully')
+      } catch (err) {
+        console.error('[Callback] Failed to sync user:', err)
+        // Continue anyway
+      }
+
+      console.log('[Callback] Navigating to:', returnTo)
+      navigate(returnTo, { replace: true })
+    }
+    syncAndNavigate()
+  }, [returnTo, isAuthenticated, user, syncUserWithBackend, navigate])
 
   // Wait for SDK to finish loading
   if (isLoading) {
