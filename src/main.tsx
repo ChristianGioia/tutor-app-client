@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Global, css } from '@emotion/react'
+import { Auth0Provider } from '@auth0/auth0-react'
+import { BrowserRouter } from 'react-router-dom'
 import { lightTokens, darkTokens, fonts } from './theme'
 import App from './App.tsx'
 
@@ -120,9 +122,25 @@ const globalStyles = css`
   }
 `
 
+const domain = import.meta.env.VITE_AUTH0_DOMAIN as string
+const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID as string
+const callbackUrl = import.meta.env.VITE_AUTH0_CALLBACK_URL as string
+const audience = import.meta.env.VITE_AUTH0_AUDIENCE as string | undefined
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Global styles={globalStyles} />
-    <App />
+    <BrowserRouter>
+      <Auth0Provider
+        domain={domain}
+        clientId={clientId}
+        authorizationParams={{
+          redirect_uri: callbackUrl,
+          ...(audience ? { audience } : {}),
+        }}
+      >
+        <App />
+      </Auth0Provider>
+    </BrowserRouter>
   </StrictMode>,
 )
