@@ -5,6 +5,7 @@ import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { CallbackPage } from './pages/CallbackPage'
 import { TutorPortal } from './pages/TutorPortal'
+import { TutorPublicPage } from './pages/TutorPublicPage'
 import { ClientPortal } from './pages/ClientPortal'
 import { RoleProtectedRoute } from './components/RoleProtectedRoute'
 import { registerAuth0TokenGetter } from './api/client'
@@ -60,6 +61,9 @@ export default function App() {
           </RoleProtectedRoute>
         }
       />
+
+      {/* Public tutor page - anyone can view a tutor's calendar */}
+      <Route path="/tutors/:tutorId" element={<TutorPublicPage />} />
 
       {/* Catch-all redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />

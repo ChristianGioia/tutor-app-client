@@ -1,11 +1,11 @@
 import { useAuth0 } from '@auth0/auth0-react'
 import styled from '@emotion/styled'
-import { usePortal } from '../context/PortalContext'
+import { TutorCalendar } from '../components/TutorCalendar'
 
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
+  height: 100vh;
 `
 
 const Header = styled.header`
@@ -15,6 +15,7 @@ const Header = styled.header`
   padding: 16px 32px;
   border-bottom: 1px solid var(--border);
   gap: 12px;
+  flex-shrink: 0;
 `
 
 const Logo = styled.h1`
@@ -55,18 +56,14 @@ const LogoutBtn = styled.button`
 `
 
 const Main = styled.main`
-  flex-grow: 1;
-  padding: 32px;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
+  overflow: hidden;
 `
 
 export function TutorPortal() {
   const { user, logout } = useAuth0()
-  const { userType } = usePortal()
 
   const handleLogout = () => {
     logout({ logoutParams: { returnTo: window.location.origin } })
@@ -75,7 +72,7 @@ export function TutorPortal() {
   return (
     <Container>
       <Header>
-        <Logo>Tutor Portal</Logo>
+        <Logo>Tutor Portal - Calendar</Logo>
         <UserSection>
           <UserEmail>{user?.email}</UserEmail>
           <LogoutBtn onClick={handleLogout}>Log out</LogoutBtn>
@@ -83,9 +80,7 @@ export function TutorPortal() {
       </Header>
 
       <Main>
-        <h2>Welcome to the Tutor Portal</h2>
-        <p>User type: <strong>{userType}</strong></p>
-        <p>This is where tutors manage their sessions, students, and availability.</p>
+        <TutorCalendar />
       </Main>
     </Container>
   )

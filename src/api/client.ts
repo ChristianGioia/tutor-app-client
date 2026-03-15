@@ -146,3 +146,134 @@ export async function updateUserType(
 
   return response.json()
 }
+
+// Appointment types and API functions
+export type AppointmentStatus = 'available' | 'booked' | 'cancelled' | 'completed'
+
+export interface Appointment {
+  id: string
+  title: string
+  description?: string
+  startTime: string
+  endTime: string
+  tutorId: string
+  clientId?: string
+  status: AppointmentStatus
+  createdAt: string
+  updatedAt: string
+  tutor?: {
+    id: string
+    name?: string
+    email: string
+  }
+  client?: {
+    id: string
+    name?: string
+    email: string
+  }
+}
+
+export interface CreateAppointmentParams {
+  title: string
+  description?: string
+  startTime: string
+  endTime: string
+}
+
+export interface UpdateAppointmentParams {
+  title?: string
+  description?: string
+  startTime?: string
+  endTime?: string
+  status?: AppointmentStatus
+}
+
+/**
+ * Get all appointments for the authenticated tutor
+ */
+export async function getTutorAppointments(): Promise<Appointment[]> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/appointments`, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch appointments: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Create a new appointment
+ */
+export async function createAppointment(params: CreateAppointmentParams): Promise<Appointment> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/appointments`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to create appointment: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Update an existing appointment
+ */
+export async function updateAppointment(
+  id: string,
+  params: UpdateAppointmentParams
+): Promise<Appointment> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/appointments/${id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to update appointment: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete an appointment
+ */
+export async function deleteAppointment(id: string): Promise<void> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/appointments/${id}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to delete appointment: ${response.statusText}`)
+  }
+}
+
+/**
+ * Get public appointments for a specific tutor (no auth required)
+ */
+export async function getPublicTutorAppointments(tutorId: string): Promise<Appointment[]> {
+  const response = await fetch(`${BASE_URL}/tutors/${tutorId}/appointments`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch tutor appointments: ${response.statusText}`)
+  }
+
+  return response.json()
+}
