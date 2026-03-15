@@ -172,12 +172,9 @@ export function HomePage() {
       </PortalGrid>
 
       {userType && (
-        <div>
-          <p>You selected: <strong>{userType}</strong></p>
-          <LoginBtn onClick={handleLogin} disabled={isLoadingUserType}>
-            {isLoadingUserType ? 'Processing...' : 'Continue'}
-          </LoginBtn>
-        </div>
+        <LoginBtn onClick={handleLogin} disabled={isLoadingUserType}>
+          {isLoadingUserType ? 'Processing...' : 'Continue'}
+        </LoginBtn>
       )}
     </Wrapper>
   )

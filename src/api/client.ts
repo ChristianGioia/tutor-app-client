@@ -1,11 +1,48 @@
 /**
- * API client stub for backend communication
- * TODO: Replace BASE_URL with actual backend URL when backend is ready
+ * API client for backend communication
+ * Handles JWT token injection and role-based access control
  */
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api'
 
 export type UserType = 'tutor' | 'client'
+
+/**
+ * Store for Auth0 token getter function
+ * This is populated by the app on initialization to avoid circular dependencies
+ */
+let getAuth0TokenFn: (() => Promise<string | null>) | null = null
+
+/**
+ * Register the Auth0 token getter function
+ * Should be called from a component that has access to useAuth0 hook
+ */
+export function registerAuth0TokenGetter(fn: () => Promise<string | null>) {
+  getAuth0TokenFn = fn
+}
+
+/**
+ * Create fetch headers with JWT token from Auth0
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (getAuth0TokenFn) {
+    try {
+      const token = await getAuth0TokenFn()
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+        console.log('[API] JWT token injected')
+      }
+    } catch (error) {
+      console.warn('[API] Could not get Auth0 token:', error)
+    }
+  }
+
+  return headers
+}
 
 export interface User {
   id: string
@@ -18,6 +55,7 @@ export interface User {
 /**
  * Register or update user in the database with their user type
  * Called after Auth0 login to track user type in postgres
+ * Validates that user type matches their registered role
  */
 export async function registerUser(params: {
   auth0Id: string
@@ -26,11 +64,13 @@ export async function registerUser(params: {
   userType: UserType
 }): Promise<User> {
   const url = `${BASE_URL}/users/register`
+  const headers = await getAuthHeaders()
+  
   console.log('POST', url, params)
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(params),
   })
 
@@ -54,9 +94,11 @@ export async function registerUser(params: {
  */
 export async function getUser(auth0Id: string): Promise<User | null> {
   const url = `${BASE_URL}/users/${auth0Id}`
+  const headers = await getAuthHeaders()
+  
   console.log('GET', url)
   
-  const response = await fetch(url)
+  const response = await fetch(url, { headers })
   console.log('Response status:', response.status, response.statusText)
 
   if (response.status === 404) {
@@ -81,9 +123,11 @@ export async function updateUserType(
   auth0Id: string,
   userType: UserType
 ): Promise<User> {
+  const headers = await getAuthHeaders()
+  
   const response = await fetch(`${BASE_URL}/users/${auth0Id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ userType }),
   })
 
