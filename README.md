@@ -208,9 +208,97 @@ Related:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## Deployment to DigitalOcean
+
+This project includes Terraform infrastructure-as-code for deploying to DigitalOcean App Platform.
+
+### Prerequisites
+
+1. **DigitalOcean Account** with API token
+2. **Terraform CLI** installed (>= 1.7)
+3. **GitHub App** connected to DigitalOcean (for auto-deploy)
+4. **Auth0 Application** configured
+
+### Quick Deploy
+
+```bash
+# Navigate to infrastructure directory
+cd infrastructure
+
+# Initialize Terraform
+terraform init
+
+# Set your DigitalOcean token
+export TF_VAR_do_token="your-digitalocean-api-token"
+
+# Preview changes
+terraform plan -var-file=environments/dev.tfvars
+
+# Deploy
+terraform apply -var-file=environments/dev.tfvars
+```
+
+### Configuration
+
+Edit `infrastructure/environments/dev.tfvars` with your values:
+
+```hcl
+auth0_domain    = "your-tenant.auth0.com"
+auth0_client_id = "your-client-id"
+auth0_audience  = "your-api-audience"
+```
+
+### Post-Deployment
+
+After deploying, update your Auth0 Application settings:
+
+1. Get the deployed app URL:
+   ```bash
+   terraform output app_url
+   ```
+
+2. In Auth0 Dashboard, add to your application:
+   - **Allowed Callback URLs**: `https://tutor-app-dev.ondigitalocean.app/callback`
+   - **Allowed Logout URLs**: `https://tutor-app-dev.ondigitalocean.app`
+   - **Allowed Web Origins**: `https://tutor-app-dev.ondigitalocean.app`
+
+### Useful Terraform Commands
+
+```bash
+# View all outputs
+terraform output
+
+# View sensitive outputs (like database URL)
+terraform output -raw database_url
+
+# Destroy infrastructure
+terraform destroy -var-file=environments/dev.tfvars
+```
+
+### Architecture
+
+```
+DigitalOcean App Platform
+├── Static Site (tutor-app-client)
+│   └── React SPA served from /
+├── Service (tutor-app-api)
+│   └── Express.js API served from /api
+└── Managed PostgreSQL Database
+```
+
+### Estimated Costs
+
+| Resource | Monthly Cost |
+|----------|--------------|
+| App Platform (Static + Service) | ~$12-17 |
+| Managed PostgreSQL | ~$15 |
+| **Total** | ~$27-32/month |
+
 ## Additional Resources
 
 - [Vite Documentation](https://vite.dev/)
 - [React Documentation](https://react.dev/)
 - [Auth0 React SDK](https://auth0.com/docs/quickstart/spa/react)
 - [API Documentation](../tutor-app-api/README.md)
+- [DigitalOcean App Platform](https://docs.digitalocean.com/products/app-platform/)
+- [Terraform DigitalOcean Provider](https://registry.terraform.io/providers/digitalocean/digitalocean/latest/docs)

@@ -277,3 +277,195 @@ export async function getPublicTutorAppointments(tutorId: string): Promise<Appoi
 
   return response.json()
 }
+
+/**
+ * Get client's booked appointments
+ */
+export async function getClientAppointments(tutorId?: string): Promise<Appointment[]> {
+  const headers = await getAuthHeaders()
+  const url = tutorId 
+    ? `${BASE_URL}/appointments/client?tutorId=${tutorId}`
+    : `${BASE_URL}/appointments/client`
+  
+  const response = await fetch(url, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch appointments: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+// Booking request types and API functions
+export type BookingRequestStatus = 'pending' | 'accepted' | 'declined'
+
+export interface BookingRequest {
+  id: string
+  clientId: string
+  tutorId: string
+  startTime: string
+  endTime: string
+  title: string
+  message?: string
+  status: BookingRequestStatus
+  appointmentId?: string
+  createdAt: string
+  updatedAt: string
+  client?: {
+    id: string
+    name?: string
+    email: string
+  }
+  tutor?: {
+    id: string
+    name?: string
+    email: string
+  }
+}
+
+export interface CreateBookingRequestParams {
+  tutorId: string
+  startTime: string
+  endTime: string
+  title: string
+  message?: string
+}
+
+export interface Tutor {
+  id: string
+  name?: string
+  email: string
+}
+
+/**
+ * Get all tutors (for client to browse)
+ */
+export async function getAllTutors(): Promise<Tutor[]> {
+  const response = await fetch(`${BASE_URL}/tutors`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch tutors: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get all clients that have interacted with the tutor
+ */
+export async function getTutorClients(): Promise<Tutor[]> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/clients`, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch clients: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Create a booking request (client only)
+ */
+export async function createBookingRequest(params: CreateBookingRequestParams): Promise<BookingRequest> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/booking-requests`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to create booking request: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get client's booking requests
+ */
+export async function getClientBookingRequests(tutorId?: string): Promise<BookingRequest[]> {
+  const headers = await getAuthHeaders()
+  const url = tutorId 
+    ? `${BASE_URL}/booking-requests/client?tutorId=${tutorId}`
+    : `${BASE_URL}/booking-requests/client`
+  
+  const response = await fetch(url, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch booking requests: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get tutor's received booking requests
+ */
+export async function getTutorBookingRequests(clientId?: string, status?: string): Promise<BookingRequest[]> {
+  const headers = await getAuthHeaders()
+  const params = new URLSearchParams()
+  if (clientId) params.append('clientId', clientId)
+  if (status) params.append('status', status)
+  
+  const url = params.toString() 
+    ? `${BASE_URL}/booking-requests/tutor?${params.toString()}`
+    : `${BASE_URL}/booking-requests/tutor`
+  
+  const response = await fetch(url, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch booking requests: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Update booking request status (tutor accept/decline)
+ */
+export async function updateBookingRequestStatus(
+  id: string,
+  status: 'accepted' | 'declined'
+): Promise<BookingRequest> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/booking-requests/${id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to update booking request: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Cancel a booking request (client only, pending only)
+ */
+export async function cancelBookingRequest(id: string): Promise<void> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/booking-requests/${id}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to cancel booking request: ${response.statusText}`)
+  }
+}
