@@ -52,6 +52,12 @@ export interface User {
   createdAt: string
 }
 
+export interface RegistrationErrorResponse {
+  message: string
+  code?: string
+  existingRole?: UserType
+}
+
 /**
  * Register or update user in the database with their user type
  * Called after Auth0 login to track user type in postgres
@@ -77,10 +83,12 @@ export async function registerUser(params: {
   console.log('Response status:', response.status, response.statusText)
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(
-      error.message || `Failed to register user: ${response.statusText}`
-    )
+    const error = await response.json().catch(() => ({})) as RegistrationErrorResponse
+    const err = new Error(error.message || `Failed to register user: ${response.statusText}`) as any
+    err.code = error.code
+    err.existingRole = error.existingRole
+    err.status = response.status
+    throw err
   }
 
   const result = await response.json()

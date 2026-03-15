@@ -20,6 +20,7 @@ export function CallbackPage() {
   const [returnTo, setReturnTo] = useState<string | null>(null)
   const hasHandledCallback = useRef(false)
   const hasSyncedUser = useRef(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   // Step 1: Handle the Auth0 callback (runs once)
   useEffect(() => {
@@ -83,8 +84,10 @@ export function CallbackPage() {
         await syncUserWithBackend(auth0Id, email, name)
         console.log('[Callback] User synced successfully')
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Failed to sync user'
         console.error('[Callback] Failed to sync user:', err)
-        // Continue anyway
+        setSyncError(errMsg)
+        // Continue anyway after logging error
       }
 
       console.log('[Callback] Navigating to:', returnTo)
@@ -107,6 +110,18 @@ export function CallbackPage() {
       <Wrapper>
         <h2>Authentication error</h2>
         <p>{error.message}</p>
+      </Wrapper>
+    )
+  }
+
+  if (syncError) {
+    return (
+      <Wrapper>
+        <h2>Registration error</h2>
+        <p>{syncError}</p>
+        <p style={{ marginTop: '20px', fontSize: '14px', color: 'var(--text-muted)' }}>
+          Attempting to redirect anyway...
+        </p>
       </Wrapper>
     )
   }

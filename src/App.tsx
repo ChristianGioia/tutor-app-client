@@ -14,13 +14,15 @@ export default function App() {
 
   // Register Auth0 token getter for API requests
   useEffect(() => {
-    const getToken = async () => {
+    const getToken = async (): Promise<string | null> => {
       if (!isAuthenticated) {
         return null
       }
       try {
-        const token = await getAccessTokenSilently()
-        return token
+        const token = await getAccessTokenSilently({
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        } as any)
+        return typeof token === 'string' ? token : (token as any).access_token || null
       } catch (error) {
         console.warn('[App] Could not get Auth0 token:', error)
         return null

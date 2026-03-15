@@ -1,5 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import styled from '@emotion/styled'
 import type { ReactNode } from 'react'
 import { usePortal } from '../context/PortalContext'
@@ -59,6 +59,7 @@ export function RoleProtectedRoute({ children, requiredRole }: RoleProtectedRout
   const { isAuthenticated, isLoading, logout } = useAuth0()
   const { userType, isLoadingUserType } = usePortal()
   const location = useLocation()
+  const navigate = useNavigate()
 
   console.log('[RoleProtectedRoute]', {
     path: location.pathname,
@@ -108,13 +109,19 @@ export function RoleProtectedRoute({ children, requiredRole }: RoleProtectedRout
           If you have multiple accounts, please sign out and log in with your {requiredRole}{' '}
           account.
         </p>
-        <button
-          onClick={() => {
-            logout({ logoutParams: { returnTo: window.location.origin } })
-          }}
-        >
-          Sign Out
-        </button>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+          <button onClick={() => navigate(`/${userType}`)}>
+            Go to {userType.charAt(0).toUpperCase() + userType.slice(1)} Portal
+          </button>
+          <button
+            onClick={() => {
+              logout({ logoutParams: { returnTo: window.location.origin } })
+            }}
+            style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+          >
+            Sign Out
+          </button>
+        </div>
       </UnauthorizedWrapper>
     )
   }
