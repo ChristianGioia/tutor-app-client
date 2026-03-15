@@ -290,9 +290,12 @@ const CalendarContainer = styled.div`
     font-size: 0.85rem;
   }
   
-  .fc-event-available {
-    background: var(--accent);
-    border-color: var(--accent);
+  /* Background availability slots */
+  .fc-event-available,
+  .fc-bg-event.fc-event-available {
+    background: #e0f2fe !important;
+    border-color: #7dd3fc !important;
+    opacity: 0.7;
   }
   
   .fc-event-booked {
@@ -538,21 +541,6 @@ function generateAvailabilitySlots(
   return result
 }
 
-// Check if a time range overlaps with any booking
-function isTimeSlotBooked(
-  slotStart: Date,
-  slotEnd: Date,
-  bookings: BookingRequest[]
-): boolean {
-  return bookings.some(booking => {
-    if (booking.status === 'declined') return false
-    const bookingStart = new Date(booking.startTime)
-    const bookingEnd = new Date(booking.endTime)
-    // Check for overlap
-    return slotStart < bookingEnd && slotEnd > bookingStart
-  })
-}
-
 export function ClientPortal() {
   const { user, logout } = useAuth0()
   const [tutors, setTutors] = useState<Tutor[]>([])
@@ -643,19 +631,17 @@ export function ClientPortal() {
     ? myRequests.filter(r => r.tutorId === selectedTutor.id)
     : []
 
-  // Calendar events - STRICT PRIVACY: only show available slots + my own requests
+  // Background events for available slots (not clickable, just visual)
+  const backgroundEvents: EventInput[] = availableSlots.map(slot => ({
+    id: `available-${slot.slotId}`,
+    start: slot.start.toISOString(),
+    end: slot.end.toISOString(),
+    display: 'background',
+    classNames: ['fc-event-available'],
+  }))
+
+  // Foreground events - only the client's own bookings
   const events: EventInput[] = [
-    // Available slots (from tutor's weekly availability)
-    ...availableSlots
-      .filter(slot => !isTimeSlotBooked(slot.start, slot.end, myTutorRequests))
-      .map(slot => ({
-        id: `available-${slot.slotId}`,
-        title: 'Available',
-        start: slot.start.toISOString(),
-        end: slot.end.toISOString(),
-        classNames: ['fc-event-available'],
-        extendedProps: { type: 'available', slot },
-      })),
     // My pending requests (orange, dashed)
     ...myTutorRequests
       .filter(req => req.status === 'pending')
@@ -680,10 +666,24 @@ export function ClientPortal() {
       })),
   ]
 
+  // Check if a time range is within any available slot
+  const isWithinAvailability = (start: Date, end: Date): boolean => {
+    return availableSlots.some(slot => {
+      return start >= slot.start && end <= slot.end
+    })
+  }
+
+  // Prevent selection on unavailable slots entirely
+  const selectAllow = (selectInfo: { start: Date; end: Date }): boolean => {
+    if (!selectedTutor) return false
+    return isWithinAvailability(selectInfo.start, selectInfo.end)
+  }
+
   // Handle date selection for booking
   const handleDateSelect = (selectInfo: DateSelectArg) => {
     if (!selectedTutor) {
       setError('Please select a tutor first')
+      selectInfo.view.calendar.unselect()
       return
     }
     
@@ -697,20 +697,10 @@ export function ClientPortal() {
     selectInfo.view.calendar.unselect()
   }
 
-  // Handle event click
-  const handleEventClick = (clickInfo: EventClickArg) => {
-    const { type, slot } = clickInfo.event.extendedProps
-    
-    if (type === 'available' && selectedTutor && slot) {
-      // Click on available slot - open booking modal
-      setBookingStart(slot.start)
-      setBookingEnd(slot.end)
-      setBookingTitle('')
-      setBookingMessage('')
-      setBookingError(null)
-      setBookingModalOpen(true)
-    }
+  // Handle event click (for viewing own bookings)
+  const handleEventClick = (_clickInfo: EventClickArg) => {
     // Clicking on own pending/confirmed requests does nothing for now
+    // Could add a detail view in the future
   }
 
   const handleDatesSet = (dateInfo: { start: Date; end: Date }) => {
@@ -904,9 +894,10 @@ export function ClientPortal() {
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek,timeGridDay',
               }}
-              events={events}
+              events={[...backgroundEvents, ...events]}
               selectable={true}
               selectMirror={true}
+              selectAllow={selectAllow}
               select={handleDateSelect}
               eventClick={handleEventClick}
               datesSet={handleDatesSet}

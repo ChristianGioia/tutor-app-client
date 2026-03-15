@@ -20,9 +20,9 @@ github_repo_api    = "tutor-app-api"
 deploy_branch      = "main"
 
 # Auth0 configuration (replace with your values)
-auth0_domain    = "YOUR_AUTH0_DOMAIN.auth0.com"
-auth0_client_id = "YOUR_AUTH0_CLIENT_ID"
-auth0_audience  = "YOUR_AUTH0_AUDIENCE"
+auth0_domain    = "dev-ywrtrgfwmzj8ecd7.us.auth0.com"
+auth0_client_id = "UXFHDrbdRgfeaJacx1Xsg9PQN9LHJVJt"
+auth0_audience  = "https://api.tutor-app.com"
 
 # Instance sizing (smallest for dev)
 instance_size  = "apps-s-1vcpu-0.5gb"
