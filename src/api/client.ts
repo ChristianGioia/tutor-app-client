@@ -147,6 +147,121 @@ export async function updateUserType(
   return response.json()
 }
 
+// Availability types and API functions (recurring weekly schedule)
+export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+
+export interface AvailabilitySlot {
+  id: string
+  tutorId: string
+  dayOfWeek: DayOfWeek
+  startTime: string  // HH:MM format (e.g., "09:00")
+  endTime: string    // HH:MM format (e.g., "17:00")
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateAvailabilityParams {
+  dayOfWeek: DayOfWeek
+  startTime: string
+  endTime: string
+}
+
+export interface UpdateAvailabilityParams {
+  dayOfWeek?: DayOfWeek
+  startTime?: string
+  endTime?: string
+}
+
+/**
+ * Get tutor's weekly availability schedule
+ */
+export async function getTutorAvailability(): Promise<AvailabilitySlot[]> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/availability`, { headers })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch availability: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get public availability for a specific tutor
+ */
+export async function getPublicTutorAvailability(tutorId: string): Promise<AvailabilitySlot[]> {
+  const response = await fetch(`${BASE_URL}/tutors/${tutorId}/availability`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to fetch tutor availability: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Create a new availability slot
+ */
+export async function createAvailability(params: CreateAvailabilityParams): Promise<AvailabilitySlot> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/availability`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to create availability: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Update an availability slot
+ */
+export async function updateAvailability(
+  id: string,
+  params: UpdateAvailabilityParams
+): Promise<AvailabilitySlot> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/availability/${id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to update availability: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete an availability slot
+ */
+export async function deleteAvailability(id: string): Promise<void> {
+  const headers = await getAuthHeaders()
+  
+  const response = await fetch(`${BASE_URL}/availability/${id}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.message || `Failed to delete availability: ${response.statusText}`)
+  }
+}
+
 // Appointment types and API functions
 export type AppointmentStatus = 'available' | 'booked' | 'cancelled' | 'completed'
 

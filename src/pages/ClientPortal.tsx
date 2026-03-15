@@ -8,14 +8,14 @@ import interactionPlugin from '@fullcalendar/interaction'
 import type { EventInput, DateSelectArg, EventClickArg } from '@fullcalendar/core'
 import {
   getAllTutors,
-  getPublicTutorAppointments,
-  getClientAppointments,
+  getPublicTutorAvailability,
   getClientBookingRequests,
   createBookingRequest,
   cancelBookingRequest,
   type Tutor,
-  type Appointment,
+  type AvailabilitySlot,
   type BookingRequest,
+  type DayOfWeek,
 } from '../api/client'
 
 const Container = styled.div`
@@ -305,6 +305,26 @@ const CalendarContainer = styled.div`
     border-color: #8b5cf6;
   }
   
+  .fc-event-pending {
+    background: #f59e0b;
+    border-color: #d97706;
+    border-style: dashed;
+    border-width: 2px;
+  }
+  
+  .fc-event-confirmed {
+    background: #10b981;
+    border-color: #059669;
+  }
+  
+  .fc-event-unavailable {
+    background: #9ca3af;
+    border-color: #9ca3af;
+    cursor: default;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  
   .fc-day-today {
     background: var(--accent-bg) !important;
   }
@@ -453,17 +473,100 @@ const FilterSelect = styled.select`
   margin-bottom: 12px;
 `
 
+// Helper to get dates for current week based on day of week
+function getNextDateForDay(dayOfWeek: DayOfWeek, baseDate: Date): Date {
+  const dayMap: Record<DayOfWeek, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  }
+  
+  const targetDay = dayMap[dayOfWeek]
+  const currentDay = baseDate.getDay()
+  let daysUntil = targetDay - currentDay
+  
+  if (daysUntil < 0) daysUntil += 7
+  
+  const result = new Date(baseDate)
+  result.setDate(result.getDate() + daysUntil)
+  return result
+}
+
+// Generate availability slots for a date range from recurring weekly schedule
+function generateAvailabilitySlots(
+  slots: AvailabilitySlot[],
+  startDate: Date,
+  endDate: Date
+): { start: Date; end: Date; slotId: string }[] {
+  const result: { start: Date; end: Date; slotId: string }[] = []
+  
+  const current = new Date(startDate)
+  current.setHours(0, 0, 0, 0)
+  
+  while (current <= endDate) {
+    for (const slot of slots) {
+      const slotDate = getNextDateForDay(slot.dayOfWeek, current)
+      
+      if (slotDate >= startDate && slotDate <= endDate) {
+        const [startHour, startMin] = slot.startTime.split(':').map(Number)
+        const [endHour, endMin] = slot.endTime.split(':').map(Number)
+        
+        const eventStart = new Date(slotDate)
+        eventStart.setHours(startHour, startMin, 0, 0)
+        
+        const eventEnd = new Date(slotDate)
+        eventEnd.setHours(endHour, endMin, 0, 0)
+        
+        // Only add future slots
+        if (eventStart > new Date()) {
+          result.push({
+            start: eventStart,
+            end: eventEnd,
+            slotId: `${slot.id}-${slotDate.toISOString().split('T')[0]}`,
+          })
+        }
+      }
+    }
+    
+    current.setDate(current.getDate() + 7)
+  }
+  
+  return result
+}
+
+// Check if a time range overlaps with any booking
+function isTimeSlotBooked(
+  slotStart: Date,
+  slotEnd: Date,
+  bookings: BookingRequest[]
+): boolean {
+  return bookings.some(booking => {
+    if (booking.status === 'declined') return false
+    const bookingStart = new Date(booking.startTime)
+    const bookingEnd = new Date(booking.endTime)
+    // Check for overlap
+    return slotStart < bookingEnd && slotEnd > bookingStart
+  })
+}
+
 export function ClientPortal() {
   const { user, logout } = useAuth0()
   const [tutors, setTutors] = useState<Tutor[]>([])
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null)
-  const [tutorAppointments, setTutorAppointments] = useState<Appointment[]>([])
-  const [myAppointments, setMyAppointments] = useState<Appointment[]>([])
+  const [tutorAvailability, setTutorAvailability] = useState<AvailabilitySlot[]>([])
   const [myRequests, setMyRequests] = useState<BookingRequest[]>([])
-  const [activeTab, setActiveTab] = useState<'requests' | 'bookings'>('requests')
+  const [activeTab, setActiveTab] = useState<'requests' | 'confirmed'>('requests')
   const [filterTutorId, setFilterTutorId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  })
   
   // Booking modal state
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
@@ -480,12 +583,12 @@ export function ClientPortal() {
     loadMyData()
   }, [])
 
-  // Load tutor appointments when selected tutor changes
+  // Load tutor availability when selected tutor changes
   useEffect(() => {
     if (selectedTutor) {
-      loadTutorAppointments(selectedTutor.id)
+      loadTutorAvailability(selectedTutor.id)
     } else {
-      setTutorAppointments([])
+      setTutorAvailability([])
     }
   }, [selectedTutor])
 
@@ -503,23 +606,21 @@ export function ClientPortal() {
     }
   }
 
-  async function loadTutorAppointments(tutorId: string) {
+  async function loadTutorAvailability(tutorId: string) {
     try {
-      const data = await getPublicTutorAppointments(tutorId)
-      setTutorAppointments(data)
+      const availability = await getPublicTutorAvailability(tutorId)
+      setTutorAvailability(availability)
+      // Note: We don't load other clients' bookings - privacy is enforced server-side
+      // The server should only return this client's requests for the tutor
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load appointments')
+      setError(err instanceof Error ? err.message : 'Failed to load availability')
     }
   }
 
   async function loadMyData() {
     try {
       setLoading(true)
-      const [appointments, requests] = await Promise.all([
-        getClientAppointments(filterTutorId || undefined),
-        getClientBookingRequests(filterTutorId || undefined),
-      ])
-      setMyAppointments(appointments)
+      const requests = await getClientBookingRequests(filterTutorId || undefined)
       setMyRequests(requests)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data')
@@ -532,30 +633,50 @@ export function ClientPortal() {
     logout({ logoutParams: { returnTo: window.location.origin } })
   }
 
-  // Calendar events
+  // Generate available time slots from tutor's weekly availability
+  const availableSlots = selectedTutor
+    ? generateAvailabilitySlots(tutorAvailability, visibleRange.start, visibleRange.end)
+    : []
+
+  // Get my requests for the selected tutor
+  const myTutorRequests = selectedTutor
+    ? myRequests.filter(r => r.tutorId === selectedTutor.id)
+    : []
+
+  // Calendar events - STRICT PRIVACY: only show available slots + my own requests
   const events: EventInput[] = [
-    // Tutor's available slots
-    ...tutorAppointments
-      .filter(apt => apt.status === 'available')
-      .map(apt => ({
-        id: `tutor-${apt.id}`,
-        title: apt.title,
-        start: apt.startTime,
-        end: apt.endTime,
+    // Available slots (from tutor's weekly availability)
+    ...availableSlots
+      .filter(slot => !isTimeSlotBooked(slot.start, slot.end, myTutorRequests))
+      .map(slot => ({
+        id: `available-${slot.slotId}`,
+        title: 'Available',
+        start: slot.start.toISOString(),
+        end: slot.end.toISOString(),
         classNames: ['fc-event-available'],
-        extendedProps: { type: 'available', appointment: apt },
+        extendedProps: { type: 'available', slot },
       })),
-    // My booked appointments
-    ...myAppointments
-      .filter(apt => !filterTutorId || apt.tutorId === filterTutorId)
-      .filter(apt => !selectedTutor || apt.tutorId === selectedTutor.id)
-      .map(apt => ({
-        id: `my-${apt.id}`,
-        title: `${apt.title} (Booked)`,
-        start: apt.startTime,
-        end: apt.endTime,
-        classNames: ['fc-event-my-booking'],
-        extendedProps: { type: 'my-booking', appointment: apt },
+    // My pending requests (orange, dashed)
+    ...myTutorRequests
+      .filter(req => req.status === 'pending')
+      .map(req => ({
+        id: `pending-${req.id}`,
+        title: `⏳ ${req.title} (Pending)`,
+        start: req.startTime,
+        end: req.endTime,
+        classNames: ['fc-event-pending'],
+        extendedProps: { type: 'my-pending', request: req },
+      })),
+    // My confirmed bookings (green)
+    ...myTutorRequests
+      .filter(req => req.status === 'accepted')
+      .map(req => ({
+        id: `confirmed-${req.id}`,
+        title: `✓ ${req.title} (Confirmed)`,
+        start: req.startTime,
+        end: req.endTime,
+        classNames: ['fc-event-confirmed'],
+        extendedProps: { type: 'my-confirmed', request: req },
       })),
   ]
 
@@ -578,17 +699,22 @@ export function ClientPortal() {
 
   // Handle event click
   const handleEventClick = (clickInfo: EventClickArg) => {
-    const { type, appointment } = clickInfo.event.extendedProps
+    const { type, slot } = clickInfo.event.extendedProps
     
-    if (type === 'available' && selectedTutor) {
+    if (type === 'available' && selectedTutor && slot) {
       // Click on available slot - open booking modal
-      setBookingStart(new Date(appointment.startTime))
-      setBookingEnd(new Date(appointment.endTime))
-      setBookingTitle(appointment.title)
+      setBookingStart(slot.start)
+      setBookingEnd(slot.end)
+      setBookingTitle('')
       setBookingMessage('')
       setBookingError(null)
       setBookingModalOpen(true)
     }
+    // Clicking on own pending/confirmed requests does nothing for now
+  }
+
+  const handleDatesSet = (dateInfo: { start: Date; end: Date }) => {
+    setVisibleRange({ start: dateInfo.start, end: dateInfo.end })
   }
 
   // Submit booking request
@@ -687,10 +813,10 @@ export function ClientPortal() {
 
           <TabContainer>
             <Tab active={activeTab === 'requests'} onClick={() => setActiveTab('requests')}>
-              Requests
+              Pending
             </Tab>
-            <Tab active={activeTab === 'bookings'} onClick={() => setActiveTab('bookings')}>
-              Bookings
+            <Tab active={activeTab === 'confirmed'} onClick={() => setActiveTab('confirmed')}>
+              Confirmed
             </Tab>
           </TabContainer>
 
@@ -735,16 +861,16 @@ export function ClientPortal() {
                 ))
               )
             ) : (
-              myAppointments.length === 0 ? (
+              myRequests.filter(r => r.status === 'accepted').length === 0 ? (
                 <EmptyState>No confirmed bookings</EmptyState>
               ) : (
-                myAppointments.map(apt => (
-                  <RequestCard key={apt.id} status="accepted">
-                    <RequestTitle>{apt.title}</RequestTitle>
+                myRequests.filter(r => r.status === 'accepted').map(request => (
+                  <RequestCard key={request.id} status="accepted">
+                    <RequestTitle>{request.title}</RequestTitle>
                     <RequestMeta>
-                      {apt.tutor?.name || apt.tutor?.email}
+                      {request.tutor?.name || request.tutor?.email}
                       <br />
-                      {formatDateTime(apt.startTime)} - {formatDateTime(apt.endTime)}
+                      {formatDateTime(request.startTime)} - {formatDateTime(request.endTime)}
                     </RequestMeta>
                     <RequestStatus status="accepted">Confirmed</RequestStatus>
                   </RequestCard>
@@ -783,6 +909,7 @@ export function ClientPortal() {
               selectMirror={true}
               select={handleDateSelect}
               eventClick={handleEventClick}
+              datesSet={handleDatesSet}
               slotMinTime="06:00:00"
               slotMaxTime="22:00:00"
               allDaySlot={false}

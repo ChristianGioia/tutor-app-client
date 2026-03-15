@@ -5,7 +5,7 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import type { EventInput, EventClickArg } from '@fullcalendar/core'
 import styled from '@emotion/styled'
-import { getPublicTutorAppointments, type Appointment } from '../api/client'
+import { getPublicTutorAvailability, type AvailabilitySlot, type DayOfWeek } from '../api/client'
 
 const Container = styled.div`
   display: flex;
@@ -90,7 +90,6 @@ const CalendarWrapper = styled.div`
   }
   
   .fc-event {
-    cursor: pointer;
     border-radius: 4px;
     padding: 2px 4px;
     font-size: 0.85rem;
@@ -99,16 +98,15 @@ const CalendarWrapper = styled.div`
   .fc-event-available {
     background: var(--accent);
     border-color: var(--accent);
+    cursor: pointer;
   }
   
-  .fc-event-booked {
-    background: #10b981;
-    border-color: #10b981;
-  }
-  
-  .fc-event-completed {
-    background: #6b7280;
-    border-color: #6b7280;
+  .fc-event-unavailable {
+    background: #9ca3af;
+    border-color: #9ca3af;
+    cursor: default;
+    opacity: 0.6;
+    pointer-events: none;
   }
   
   .fc-daygrid-day-number,
@@ -149,155 +147,107 @@ const ErrorMessage = styled.div`
   font-size: 1rem;
 `
 
-const Modal = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-`
-
-const ModalContent = styled.div`
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: var(--shadow);
-`
-
-const ModalTitle = styled.h3`
-  margin: 0 0 16px;
-  font-size: 1.25rem;
-  color: var(--text-h);
-`
-
-const ModalDetail = styled.div`
-  margin-bottom: 12px;
-  
-  strong {
-    display: block;
-    font-size: 0.875rem;
-    color: var(--text);
-    margin-bottom: 4px;
+// Helper to get dates for a day of week
+function getNextDateForDay(dayOfWeek: DayOfWeek, baseDate: Date): Date {
+  const dayMap: Record<DayOfWeek, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+    thursday: 4, friday: 5, saturday: 6,
   }
   
-  span {
-    color: var(--text-h);
-  }
-`
-
-const StatusBadge = styled.span<{ status: string }>`
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  const targetDay = dayMap[dayOfWeek]
+  const currentDay = baseDate.getDay()
+  let daysUntil = targetDay - currentDay
+  if (daysUntil < 0) daysUntil += 7
   
-  ${({ status }) => {
-    switch (status) {
-      case 'available':
-        return 'background: #dbeafe; color: #1d4ed8;'
-      case 'booked':
-        return 'background: #d1fae5; color: #047857;'
-      case 'completed':
-        return 'background: #e5e7eb; color: #374151;'
-      default:
-        return 'background: #e5e7eb; color: #374151;'
+  const result = new Date(baseDate)
+  result.setDate(result.getDate() + daysUntil)
+  return result
+}
+
+// Generate availability events for visible date range
+function generateAvailabilityEvents(
+  slots: AvailabilitySlot[],
+  startDate: Date,
+  endDate: Date
+): EventInput[] {
+  const events: EventInput[] = []
+  const current = new Date(startDate)
+  current.setHours(0, 0, 0, 0)
+  
+  while (current <= endDate) {
+    for (const slot of slots) {
+      const slotDate = getNextDateForDay(slot.dayOfWeek, current)
+      
+      if (slotDate >= startDate && slotDate <= endDate) {
+        const [startHour, startMin] = slot.startTime.split(':').map(Number)
+        const [endHour, endMin] = slot.endTime.split(':').map(Number)
+        
+        const eventStart = new Date(slotDate)
+        eventStart.setHours(startHour, startMin, 0, 0)
+        
+        const eventEnd = new Date(slotDate)
+        eventEnd.setHours(endHour, endMin, 0, 0)
+        
+        // Only show future slots
+        if (eventStart > new Date()) {
+          events.push({
+            id: `${slot.id}-${slotDate.toISOString()}`,
+            title: 'Available',
+            start: eventStart.toISOString(),
+            end: eventEnd.toISOString(),
+            classNames: ['fc-event-available'],
+            extendedProps: { type: 'available' },
+          })
+        }
+      }
     }
-  }}
-`
-
-const CloseButton = styled.button`
-  width: 100%;
-  margin-top: 20px;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-family: var(--sans);
-  cursor: pointer;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  transition: box-shadow 0.2s;
-  
-  &:hover {
-    box-shadow: var(--shadow);
+    current.setDate(current.getDate() + 7)
   }
-`
+  
+  return events
+}
 
 export function TutorPublicPage() {
   const { tutorId } = useParams<{ tutorId: string }>()
-  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
-  const [tutorName, setTutorName] = useState<string>('')
+  const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  })
 
   useEffect(() => {
     if (tutorId) {
-      fetchAppointments()
+      fetchAvailability()
     }
   }, [tutorId])
 
-  async function fetchAppointments() {
+  async function fetchAvailability() {
     if (!tutorId) return
     
     try {
       setLoading(true)
-      const data = await getPublicTutorAppointments(tutorId)
-      setAppointments(data)
-      
-      // Get tutor name from the first appointment
-      if (data.length > 0 && data[0].tutor) {
-        setTutorName(data[0].tutor.name || data[0].tutor.email)
-      }
-      
+      const data = await getPublicTutorAvailability(tutorId)
+      setAvailability(data)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch appointments')
+      setError(err instanceof Error ? err.message : 'Failed to fetch availability')
     } finally {
       setLoading(false)
     }
   }
 
-  // Convert appointments to FullCalendar events (only show available appointments publicly)
-  const events: EventInput[] = appointments
-    .filter(apt => apt.status !== 'cancelled')
-    .map((apt) => ({
-      id: apt.id,
-      title: apt.status === 'available' ? apt.title : 'Booked',
-      start: apt.startTime,
-      end: apt.endTime,
-      extendedProps: {
-        description: apt.description,
-        status: apt.status,
-      },
-      classNames: [`fc-event-${apt.status}`],
-    }))
+  // Generate availability events from weekly schedule
+  const events = generateAvailabilityEvents(availability, visibleRange.start, visibleRange.end)
 
-  const handleEventClick = (clickInfo: EventClickArg) => {
-    const apt = appointments.find((a) => a.id === clickInfo.event.id)
-    if (apt) {
-      setSelectedAppointment(apt)
-    }
+  const handleEventClick = (_clickInfo: EventClickArg) => {
+    // Public page is view-only, clicking does nothing
+    // Users need to log in to book
   }
 
-  function formatDateTime(isoString: string): string {
-    return new Date(isoString).toLocaleString(undefined, {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+  const handleDatesSet = (dateInfo: { start: Date; end: Date }) => {
+    setVisibleRange({ start: dateInfo.start, end: dateInfo.end })
   }
 
   if (!tutorId) {
@@ -318,7 +268,7 @@ export function TutorPublicPage() {
   return (
     <Container>
       <Header>
-        <Logo>{tutorName ? `${tutorName}'s Calendar` : 'Tutor Calendar'}</Logo>
+        <Logo>Tutor Availability</Logo>
         <BackLink to="/">Back to Home</BackLink>
       </Header>
 
@@ -330,6 +280,8 @@ export function TutorPublicPage() {
             <ErrorMessage>{error}</ErrorMessage>
             <BackLink to="/">Go to Home</BackLink>
           </ErrorContainer>
+        ) : availability.length === 0 ? (
+          <LoadingContainer>This tutor has not set their availability yet.</LoadingContainer>
         ) : (
           <CalendarWrapper>
             <FullCalendar
@@ -342,6 +294,7 @@ export function TutorPublicPage() {
               }}
               events={events}
               eventClick={handleEventClick}
+              datesSet={handleDatesSet}
               slotMinTime="06:00:00"
               slotMaxTime="22:00:00"
               allDaySlot={false}
@@ -351,43 +304,6 @@ export function TutorPublicPage() {
           </CalendarWrapper>
         )}
       </Main>
-
-      {/* Appointment Detail Modal */}
-      {selectedAppointment && (
-        <Modal onClick={() => setSelectedAppointment(null)}>
-          <ModalContent onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>{selectedAppointment.title}</ModalTitle>
-            
-            <ModalDetail>
-              <strong>Status</strong>
-              <StatusBadge status={selectedAppointment.status}>
-                {selectedAppointment.status.charAt(0).toUpperCase() + selectedAppointment.status.slice(1)}
-              </StatusBadge>
-            </ModalDetail>
-            
-            <ModalDetail>
-              <strong>Start Time</strong>
-              <span>{formatDateTime(selectedAppointment.startTime)}</span>
-            </ModalDetail>
-            
-            <ModalDetail>
-              <strong>End Time</strong>
-              <span>{formatDateTime(selectedAppointment.endTime)}</span>
-            </ModalDetail>
-            
-            {selectedAppointment.description && (
-              <ModalDetail>
-                <strong>Description</strong>
-                <span>{selectedAppointment.description}</span>
-              </ModalDetail>
-            )}
-            
-            <CloseButton onClick={() => setSelectedAppointment(null)}>
-              Close
-            </CloseButton>
-          </ModalContent>
-        </Modal>
-      )}
     </Container>
   )
 }

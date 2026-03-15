@@ -2,25 +2,27 @@ import { useState, useEffect, useRef } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
-import interactionPlugin from '@fullcalendar/interaction'
-import type { EventInput, DateSelectArg, EventClickArg, EventDropArg } from '@fullcalendar/core'
-import type { EventResizeDoneArg } from '@fullcalendar/interaction'
+import type { EventInput, EventClickArg } from '@fullcalendar/core'
 import styled from '@emotion/styled'
 import {
-  getTutorAppointments,
-  createAppointment,
-  updateAppointment,
-  deleteAppointment,
-  type Appointment,
-  type AppointmentStatus,
+  getTutorAvailability,
+  getTutorBookingRequests,
+  updateBookingRequestStatus,
+  type AvailabilitySlot,
+  type BookingRequest,
+  type DayOfWeek,
 } from '../api/client'
 
 const CalendarWrapper = styled.div`
   flex: 1;
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   
   .fc {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     font-family: var(--sans);
   }
   
@@ -60,25 +62,26 @@ const CalendarWrapper = styled.div`
     font-size: 0.85rem;
   }
   
-  .fc-event-available {
-    background: var(--accent);
-    border-color: var(--accent);
+  /* Background availability slots */
+  .fc-event-availability {
+    background: #e0f2fe !important;
+    border-color: #7dd3fc !important;
+    opacity: 0.7;
+    cursor: default;
   }
   
-  .fc-event-booked {
+  /* Pending booking requests - orange with dashed border */
+  .fc-event-pending {
+    background: #f59e0b;
+    border-color: #d97706;
+    border-style: dashed;
+    border-width: 2px;
+  }
+  
+  /* Confirmed/accepted bookings - green solid */
+  .fc-event-confirmed {
     background: #10b981;
-    border-color: #10b981;
-  }
-  
-  .fc-event-cancelled {
-    background: #ef4444;
-    border-color: #ef4444;
-    text-decoration: line-through;
-  }
-  
-  .fc-event-completed {
-    background: #6b7280;
-    border-color: #6b7280;
+    border-color: #059669;
   }
   
   .fc-daygrid-day-number,
@@ -106,125 +109,93 @@ const Modal = styled.div`
 
 const ModalContent = styled.div`
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
   padding: 24px;
+  border-radius: 12px;
   width: 100%;
-  max-width: 400px;
-  box-shadow: var(--shadow);
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 `
 
-const ModalTitle = styled.h3`
-  margin: 0 0 20px;
+const ModalTitle = styled.h2`
+  margin: 0 0 20px 0;
   font-size: 1.25rem;
-  color: var(--text-h);
+  font-weight: 600;
 `
 
-const FormGroup = styled.div`
-  margin-bottom: 16px;
-`
-
-const Label = styled.label`
-  display: block;
-  margin-bottom: 6px;
-  font-size: 0.875rem;
-  color: var(--text);
-  font-weight: 500;
-`
-
-const Input = styled.input`
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 1rem;
-  font-family: var(--sans);
-  background: var(--bg);
-  color: var(--text);
-  box-sizing: border-box;
+const RequestDetail = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
   
-  &:focus {
-    outline: none;
-    border-color: var(--accent);
+  &:last-of-type {
+    border-bottom: none;
+  }
+  
+  strong {
+    font-size: 0.75rem;
+    color: var(--text);
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  span {
+    font-size: 0.95rem;
   }
 `
 
-const TextArea = styled.textarea`
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 1rem;
-  font-family: var(--sans);
-  background: var(--bg);
-  color: var(--text);
-  resize: vertical;
-  min-height: 80px;
-  box-sizing: border-box;
-  
-  &:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-`
-
-const Select = styled.select`
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 1rem;
-  font-family: var(--sans);
-  background: var(--bg);
-  color: var(--text);
-  box-sizing: border-box;
-  
-  &:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
+const StatusBadge = styled.span<{ status: string }>`
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: ${({ status }) => 
+    status === 'pending' ? '#fef3c7' : 
+    status === 'accepted' ? '#d1fae5' : 
+    '#fee2e2'};
+  color: ${({ status }) => 
+    status === 'pending' ? '#d97706' : 
+    status === 'accepted' ? '#059669' : 
+    '#dc2626'};
 `
 
 const ButtonGroup = styled.div`
   display: flex;
   gap: 12px;
+  justify-content: flex-end;
   margin-top: 24px;
 `
 
-const Button = styled.button<{ variant?: 'primary' | 'secondary' | 'danger' }>`
-  flex: 1;
-  padding: 10px 16px;
+const Button = styled.button<{ variant?: 'primary' | 'danger' }>`
+  padding: 10px 20px;
   border-radius: 6px;
-  font-size: 1rem;
-  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
   
-  ${({ variant = 'secondary' }) => {
-    switch (variant) {
-      case 'primary':
-        return `
-          background: var(--accent);
-          color: white;
-          border: none;
-        `
-      case 'danger':
-        return `
-          background: #ef4444;
-          color: white;
-          border: none;
-        `
-      default:
-        return `
-          background: var(--bg);
-          color: var(--text);
-          border: 1px solid var(--border);
-        `
-    }
-  }}
+  ${({ variant }) => variant === 'primary' && `
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  `}
+  
+  ${({ variant }) => variant === 'danger' && `
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fecaca;
+  `}
   
   &:hover {
-    box-shadow: var(--shadow);
+    opacity: 0.9;
   }
   
   &:disabled {
@@ -242,323 +213,292 @@ const ErrorMessage = styled.div`
   font-size: 0.875rem;
 `
 
-interface AppointmentModalProps {
-  isOpen: boolean
-  appointment?: Appointment | null
-  defaultStart?: Date
-  defaultEnd?: Date
-  onClose: () => void
-  onSave: (data: {
-    title: string
-    description?: string
-    startTime: string
-    endTime: string
-    status?: AppointmentStatus
-  }) => Promise<void>
-  onDelete?: () => Promise<void>
+const Legend = styled.div`
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--accent-bg);
+  border-radius: 8px;
+  font-size: 0.875rem;
+`
+
+const LegendItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
+const LegendColor = styled.div<{ color: string; dashed?: boolean }>`
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: ${({ color }) => color};
+  ${({ dashed }) => dashed && `
+    border: 2px dashed #d97706;
+    background: #f59e0b;
+  `}
+`
+
+// Generate recurring availability events for the visible date range
+function generateAvailabilityEvents(
+  slots: AvailabilitySlot[],
+  startDate: Date,
+  endDate: Date
+): EventInput[] {
+  const events: EventInput[] = []
+  const seenDates = new Set<string>()
+  
+  // Iterate through each day in the range
+  const current = new Date(startDate)
+  current.setHours(0, 0, 0, 0)
+  
+  while (current <= endDate) {
+    const currentDayOfWeek = current.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() as DayOfWeek
+    
+    for (const slot of slots) {
+      if (slot.dayOfWeek === currentDayOfWeek) {
+        const dateKey = `${slot.id}-${current.toISOString().split('T')[0]}`
+        
+        // Avoid duplicates
+        if (!seenDates.has(dateKey)) {
+          seenDates.add(dateKey)
+          
+          const [startHour, startMin] = slot.startTime.split(':').map(Number)
+          const [endHour, endMin] = slot.endTime.split(':').map(Number)
+          
+          const eventStart = new Date(current)
+          eventStart.setHours(startHour, startMin, 0, 0)
+          
+          const eventEnd = new Date(current)
+          eventEnd.setHours(endHour, endMin, 0, 0)
+          
+          events.push({
+            id: `availability-${dateKey}`,
+            title: 'Available',
+            start: eventStart.toISOString(),
+            end: eventEnd.toISOString(),
+            display: 'background',
+            classNames: ['fc-event-availability'],
+            extendedProps: { type: 'availability' },
+          })
+        }
+      }
+    }
+    
+    // Move to next day
+    current.setDate(current.getDate() + 1)
+  }
+  
+  return events
 }
 
-function AppointmentModal({
-  isOpen,
-  appointment,
-  defaultStart,
-  defaultEnd,
-  onClose,
-  onSave,
-  onDelete,
-}: AppointmentModalProps) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [status, setStatus] = useState<AppointmentStatus>('available')
+function formatDateTime(isoString: string): string {
+  return new Date(isoString).toLocaleString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+interface RequestModalProps {
+  request: BookingRequest | null
+  onClose: () => void
+  onAccept: (id: string) => Promise<void>
+  onDecline: (id: string) => Promise<void>
+}
+
+function RequestModal({ request, onClose, onAccept, onDecline }: RequestModalProps) {
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (appointment) {
-      setTitle(appointment.title)
-      setDescription(appointment.description || '')
-      setStartTime(formatDateTimeLocal(new Date(appointment.startTime)))
-      setEndTime(formatDateTimeLocal(new Date(appointment.endTime)))
-      setStatus(appointment.status)
-    } else if (defaultStart && defaultEnd) {
-      setTitle('')
-      setDescription('')
-      setStartTime(formatDateTimeLocal(defaultStart))
-      setEndTime(formatDateTimeLocal(defaultEnd))
-      setStatus('available')
-    }
-    setError(null)
-  }, [appointment, defaultStart, defaultEnd, isOpen])
+  if (!request) return null
 
-  function formatDateTimeLocal(date: Date): string {
-    const offset = date.getTimezoneOffset()
-    const localDate = new Date(date.getTime() - offset * 60 * 1000)
-    return localDate.toISOString().slice(0, 16)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
+  const handleAccept = async () => {
     setLoading(true)
-
     try {
-      await onSave({
-        title,
-        description: description || undefined,
-        startTime: new Date(startTime).toISOString(),
-        endTime: new Date(endTime).toISOString(),
-        status: appointment ? status : undefined,
-      })
+      await onAccept(request.id)
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save appointment')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDelete = async () => {
-    if (!onDelete || !confirm('Are you sure you want to delete this appointment?')) return
-    
-    setError(null)
+  const handleDecline = async () => {
+    if (!confirm('Are you sure you want to decline this booking request?')) return
     setLoading(true)
-
     try {
-      await onDelete()
+      await onDecline(request.id)
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete appointment')
     } finally {
       setLoading(false)
     }
   }
-
-  if (!isOpen) return null
 
   return (
     <Modal onClick={onClose}>
       <ModalContent onClick={(e) => e.stopPropagation()}>
-        <ModalTitle>{appointment ? 'Edit Appointment' : 'New Appointment'}</ModalTitle>
+        <ModalTitle>Booking Request</ModalTitle>
         
-        {error && <ErrorMessage>{error}</ErrorMessage>}
+        <RequestDetail>
+          <strong>Status</strong>
+          <StatusBadge status={request.status}>{request.status}</StatusBadge>
+        </RequestDetail>
         
-        <form onSubmit={handleSubmit}>
-          <FormGroup>
-            <Label htmlFor="title">Title *</Label>
-            <Input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Math Tutoring Session"
-              required
-            />
-          </FormGroup>
-          
-          <FormGroup>
-            <Label htmlFor="description">Description</Label>
-            <TextArea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional details about the appointment..."
-            />
-          </FormGroup>
-          
-          <FormGroup>
-            <Label htmlFor="startTime">Start Time *</Label>
-            <Input
-              id="startTime"
-              type="datetime-local"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              required
-            />
-          </FormGroup>
-          
-          <FormGroup>
-            <Label htmlFor="endTime">End Time *</Label>
-            <Input
-              id="endTime"
-              type="datetime-local"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              required
-            />
-          </FormGroup>
-          
-          {appointment && (
-            <FormGroup>
-              <Label htmlFor="status">Status</Label>
-              <Select
-                id="status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
-              >
-                <option value="available">Available</option>
-                <option value="booked">Booked</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </Select>
-            </FormGroup>
-          )}
-          
-          <ButtonGroup>
-            <Button type="button" onClick={onClose} disabled={loading}>
-              Cancel
-            </Button>
-            {appointment && onDelete && (
+        <RequestDetail>
+          <strong>Session Title</strong>
+          <span>{request.title}</span>
+        </RequestDetail>
+        
+        <RequestDetail>
+          <strong>Client</strong>
+          <span>{request.client?.name || request.client?.email || 'Unknown'}</span>
+        </RequestDetail>
+        
+        <RequestDetail>
+          <strong>Start Time</strong>
+          <span>{formatDateTime(request.startTime)}</span>
+        </RequestDetail>
+        
+        <RequestDetail>
+          <strong>End Time</strong>
+          <span>{formatDateTime(request.endTime)}</span>
+        </RequestDetail>
+        
+        {request.message && (
+          <RequestDetail>
+            <strong>Message</strong>
+            <span>{request.message}</span>
+          </RequestDetail>
+        )}
+        
+        <ButtonGroup>
+          <Button type="button" onClick={onClose} disabled={loading}>
+            Close
+          </Button>
+          {request.status === 'pending' && (
+            <>
               <Button
                 type="button"
                 variant="danger"
-                onClick={handleDelete}
+                onClick={handleDecline}
                 disabled={loading}
               >
-                Delete
+                Decline
               </Button>
-            )}
-            <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? 'Saving...' : 'Save'}
-            </Button>
-          </ButtonGroup>
-        </form>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleAccept}
+                disabled={loading}
+              >
+                {loading ? 'Processing...' : 'Accept'}
+              </Button>
+            </>
+          )}
+        </ButtonGroup>
       </ModalContent>
     </Modal>
   )
 }
 
 export function TutorCalendar() {
-  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
+  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
-  const [defaultStart, setDefaultStart] = useState<Date | undefined>()
-  const [defaultEnd, setDefaultEnd] = useState<Date | undefined>()
+  const [selectedRequest, setSelectedRequest] = useState<BookingRequest | null>(null)
+  const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days ahead
+  })
   const calendarRef = useRef<FullCalendar>(null)
 
-  // Fetch appointments on mount
   useEffect(() => {
-    fetchAppointments()
+    fetchData()
   }, [])
 
-  async function fetchAppointments() {
+  async function fetchData() {
     try {
       setLoading(true)
-      const data = await getTutorAppointments()
-      setAppointments(data)
+      const [availabilityData, requestsData] = await Promise.all([
+        getTutorAvailability(),
+        getTutorBookingRequests(),
+      ])
+      setAvailability(availabilityData)
+      setBookingRequests(requestsData)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch appointments')
+      setError(err instanceof Error ? err.message : 'Failed to fetch data')
     } finally {
       setLoading(false)
     }
   }
 
-  // Convert appointments to FullCalendar events
-  const events: EventInput[] = appointments.map((apt) => ({
-    id: apt.id,
-    title: apt.title,
-    start: apt.startTime,
-    end: apt.endTime,
-    extendedProps: {
-      description: apt.description,
-      status: apt.status,
-      clientId: apt.clientId,
-    },
-    classNames: [`fc-event-${apt.status}`],
-  }))
+  // Generate availability background events
+  const availabilityEvents = generateAvailabilityEvents(
+    availability,
+    visibleRange.start,
+    visibleRange.end
+  )
 
-  // Handle date selection (create new appointment)
-  const handleDateSelect = (selectInfo: DateSelectArg) => {
-    setSelectedAppointment(null)
-    setDefaultStart(selectInfo.start)
-    setDefaultEnd(selectInfo.end)
-    setModalOpen(true)
-    
-    // Clear the selection
-    const calendarApi = selectInfo.view.calendar
-    calendarApi.unselect()
-  }
+  // Convert booking requests to FullCalendar events
+  const requestEvents: EventInput[] = bookingRequests
+    .filter(req => req.status === 'pending' || req.status === 'accepted')
+    .map((req) => ({
+      id: `request-${req.id}`,
+      title: req.status === 'pending' 
+        ? `⏳ ${req.title}` 
+        : `✓ ${req.title}`,
+      start: req.startTime,
+      end: req.endTime,
+      extendedProps: {
+        type: 'request',
+        request: req,
+      },
+      classNames: [req.status === 'pending' ? 'fc-event-pending' : 'fc-event-confirmed'],
+    }))
 
-  // Handle event click (edit appointment)
+  const events: EventInput[] = [...availabilityEvents, ...requestEvents]
+  
+  // Debug logging
+  console.log('[TutorCalendar] Availability slots:', availability.length)
+  console.log('[TutorCalendar] Booking requests:', bookingRequests.length, bookingRequests.map(r => ({ id: r.id, status: r.status, title: r.title })))
+  console.log('[TutorCalendar] Availability events:', availabilityEvents.length)
+  console.log('[TutorCalendar] Request events:', requestEvents.length)
+  console.log('[TutorCalendar] Total events:', events.length)
+
   const handleEventClick = (clickInfo: EventClickArg) => {
-    const apt = appointments.find((a) => a.id === clickInfo.event.id)
-    if (apt) {
-      setSelectedAppointment(apt)
-      setDefaultStart(undefined)
-      setDefaultEnd(undefined)
-      setModalOpen(true)
+    const { type, request } = clickInfo.event.extendedProps
+    
+    if (type === 'request' && request) {
+      setSelectedRequest(request as BookingRequest)
     }
+    // Clicking on availability background does nothing
   }
 
-  // Handle event drag & drop
-  const handleEventDrop = async (dropInfo: EventDropArg) => {
-    const { event } = dropInfo
-    const apt = appointments.find((a) => a.id === event.id)
-    if (!apt || !event.start || !event.end) {
-      dropInfo.revert()
-      return
-    }
-
+  const handleAcceptRequest = async (requestId: string) => {
     try {
-      await updateAppointment(apt.id, {
-        startTime: event.start.toISOString(),
-        endTime: event.end.toISOString(),
-      })
-      await fetchAppointments()
+      await updateBookingRequestStatus(requestId, 'accepted')
+      await fetchData()
     } catch (err) {
-      dropInfo.revert()
-      setError(err instanceof Error ? err.message : 'Failed to update appointment')
+      setError(err instanceof Error ? err.message : 'Failed to accept request')
     }
   }
 
-  // Handle event resize
-  const handleEventResize = async (resizeInfo: EventResizeDoneArg) => {
-    const { event } = resizeInfo
-    const apt = appointments.find((a) => a.id === event.id)
-    if (!apt || !event.start || !event.end) {
-      resizeInfo.revert()
-      return
-    }
-
+  const handleDeclineRequest = async (requestId: string) => {
     try {
-      await updateAppointment(apt.id, {
-        startTime: event.start.toISOString(),
-        endTime: event.end.toISOString(),
-      })
-      await fetchAppointments()
+      await updateBookingRequestStatus(requestId, 'declined')
+      await fetchData()
     } catch (err) {
-      resizeInfo.revert()
-      setError(err instanceof Error ? err.message : 'Failed to update appointment')
+      setError(err instanceof Error ? err.message : 'Failed to decline request')
     }
   }
 
-  // Save appointment (create or update)
-  const handleSaveAppointment = async (data: {
-    title: string
-    description?: string
-    startTime: string
-    endTime: string
-    status?: AppointmentStatus
-  }) => {
-    if (selectedAppointment) {
-      // Update existing
-      await updateAppointment(selectedAppointment.id, data)
-    } else {
-      // Create new
-      await createAppointment(data)
-    }
-    await fetchAppointments()
-  }
-
-  // Delete appointment
-  const handleDeleteAppointment = async () => {
-    if (!selectedAppointment) return
-    await deleteAppointment(selectedAppointment.id)
-    await fetchAppointments()
+  const handleDatesSet = (dateInfo: { start: Date; end: Date }) => {
+    setVisibleRange({ start: dateInfo.start, end: dateInfo.end })
   }
 
   if (loading) {
@@ -572,7 +512,7 @@ export function TutorCalendar() {
   return (
     <CalendarWrapper>
       {error && (
-        <ErrorMessage style={{ marginBottom: '16px' }}>
+        <ErrorMessage>
           {error}
           <button
             onClick={() => setError(null)}
@@ -583,9 +523,24 @@ export function TutorCalendar() {
         </ErrorMessage>
       )}
       
+      <Legend>
+        <LegendItem>
+          <LegendColor color="#e0f2fe" />
+          <span>Your Availability</span>
+        </LegendItem>
+        <LegendItem>
+          <LegendColor color="#f59e0b" dashed />
+          <span>Pending Request</span>
+        </LegendItem>
+        <LegendItem>
+          <LegendColor color="#10b981" />
+          <span>Confirmed Booking</span>
+        </LegendItem>
+      </Legend>
+      
       <FullCalendar
         ref={calendarRef}
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+        plugins={[dayGridPlugin, timeGridPlugin]}
         initialView="timeGridWeek"
         headerToolbar={{
           left: 'prev,next today',
@@ -593,15 +548,8 @@ export function TutorCalendar() {
           right: 'dayGridMonth,timeGridWeek,timeGridDay',
         }}
         events={events}
-        selectable={true}
-        selectMirror={true}
-        editable={true}
-        dayMaxEvents={true}
-        weekends={true}
-        select={handleDateSelect}
         eventClick={handleEventClick}
-        eventDrop={handleEventDrop}
-        eventResize={handleEventResize}
+        datesSet={handleDatesSet}
         slotMinTime="06:00:00"
         slotMaxTime="22:00:00"
         allDaySlot={false}
@@ -609,17 +557,11 @@ export function TutorCalendar() {
         height="100%"
       />
       
-      <AppointmentModal
-        isOpen={modalOpen}
-        appointment={selectedAppointment}
-        defaultStart={defaultStart}
-        defaultEnd={defaultEnd}
-        onClose={() => {
-          setModalOpen(false)
-          setSelectedAppointment(null)
-        }}
-        onSave={handleSaveAppointment}
-        onDelete={selectedAppointment ? handleDeleteAppointment : undefined}
+      <RequestModal
+        request={selectedRequest}
+        onClose={() => setSelectedRequest(null)}
+        onAccept={handleAcceptRequest}
+        onDecline={handleDeclineRequest}
       />
     </CalendarWrapper>
   )

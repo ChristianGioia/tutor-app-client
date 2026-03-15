@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import styled from '@emotion/styled'
 import { TutorCalendar } from '../components/TutorCalendar'
+import { TutorAvailabilityManager } from '../components/TutorAvailabilityManager'
 import {
   getTutorBookingRequests,
   getTutorClients,
@@ -69,6 +70,37 @@ const CalendarSection = styled.main`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+`
+
+const ViewTabs = styled.div`
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  background: var(--bg);
+`
+
+const ViewTab = styled.button<{ active?: boolean }>`
+  padding: 12px 20px;
+  border: none;
+  border-bottom: 2px solid ${({ active }) => active ? 'var(--accent)' : 'transparent'};
+  background: transparent;
+  color: ${({ active }) => active ? 'var(--accent)' : 'var(--text)'};
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    color: var(--accent);
+  }
+`
+
+const ContentArea = styled.div`
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 `
 
 const Sidebar = styled.aside`
@@ -283,6 +315,7 @@ const ErrorMessage = styled.div`
 
 export function TutorPortal() {
   const { user, logout } = useAuth0()
+  const [view, setView] = useState<'calendar' | 'availability'>('calendar')
   const [activeTab, setActiveTab] = useState<'pending' | 'all'>('pending')
   const [requests, setRequests] = useState<BookingRequest[]>([])
   const [clients, setClients] = useState<Tutor[]>([])
@@ -376,7 +409,17 @@ export function TutorPortal() {
 
       <MainContent>
         <CalendarSection>
-          <TutorCalendar />
+          <ViewTabs>
+            <ViewTab active={view === 'calendar'} onClick={() => setView('calendar')}>
+              Calendar
+            </ViewTab>
+            <ViewTab active={view === 'availability'} onClick={() => setView('availability')}>
+              Set Availability
+            </ViewTab>
+          </ViewTabs>
+          <ContentArea>
+            {view === 'calendar' ? <TutorCalendar /> : <TutorAvailabilityManager />}
+          </ContentArea>
         </CalendarSection>
 
         <Sidebar>
